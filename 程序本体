@@ -1,0 +1,302 @@
+import sys
+import os
+import time
+import pyautogui
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                             QLabel, QPushButton, QComboBox, QLineEdit, QFileDialog, 
+                             QMessageBox, QListWidget, QListWidgetItem, QSpinBox, QDoubleSpinBox)
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QIcon
+
+class AutomationStep:
+    def __init__(self, step_type="点击", image_path="", input_text="", confidence=0.8, wait_time=1.0):
+        self.step_type = step_type
+        self.image_path = image_path
+        self.input_text = input_text
+        self.confidence = confidence
+        self.wait_time = wait_time
+    
+    def execute(self):
+        """执行单个步骤"""
+        if not os.path.exists(self.image_path):
+            return False, f"图片文件不存在: {self.image_path}"
+        
+        try:
+            location = pyautogui.locateOnScreen(self.image_path, confidence=self.confidence)
+            if location:
+                center = pyautogui.center(location)
+                
+                if self.step_type == "点击":
+                    pyautogui.click(center)
+                elif self.step_type == "双击":
+                    pyautogui.doubleClick(center)
+                elif self.step_type == "右键点击":
+                    pyautogui.rightClick(center)
+                elif self.step_type == "输入文本":
+                    pyautogui.click(center)
+                    pyautogui.write(self.input_text)
+                
+                time.sleep(self.wait_time)
+                return True, f"成功执行 {self.step_type}"
+            return False, f"未找到图片: {os.path.basename(self.image_path)}"
+        except Exception as e:
+            return False, f"执行出错: {str(e)}"
+
+class ImageClickerApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        self.setWindowTitle("自动化步骤编辑器")
+        self.setWindowIcon(QIcon("icon.png"))  # 替换为你自己的图标或删除这行
+        self.setMinimumSize(800, 600)
+        
+        # 存储所有步骤
+        self.steps = []
+        
+        # 主控件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        
+        # 左侧 - 步骤列表
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        
+        self.steps_list = QListWidget()
+        self.steps_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.steps_list.itemSelectionChanged.connect(self.on_step_selected)
+        
+        # 步骤操作按钮
+        btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton("添加步骤")
+        self.add_btn.clicked.connect(self.add_step)
+        self.edit_btn = QPushButton("编辑步骤")
+        self.edit_btn.clicked.connect(self.edit_step)
+        self.delete_btn = QPushButton("删除步骤")
+        self.delete_btn.clicked.connect(self.delete_step)
+        self.move_up_btn = QPushButton("上移")
+        self.move_up_btn.clicked.connect(self.move_step_up)
+        self.move_down_btn = QPushButton("下移")
+        self.move_down_btn.clicked.connect(self.move_step_down)
+        
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.edit_btn)
+        btn_layout.addWidget(self.delete_btn)
+        btn_layout.addWidget(self.move_up_btn)
+        btn_layout.addWidget(self.move_down_btn)
+        
+        left_layout.addWidget(QLabel("步骤列表:"))
+        left_layout.addWidget(self.steps_list)
+        left_layout.addLayout(btn_layout)
+        
+        # 右侧 - 步骤编辑区
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        
+        # 步骤类型
+        self.step_type_combo = QComboBox()
+        self.step_type_combo.addItems(["点击", "双击", "右键点击", "输入文本"])
+        
+        # 图片选择
+        self.image_path_label = QLabel("未选择图片")
+        self.image_path_label.setWordWrap(True)
+        browse_btn = QPushButton("选择图片")
+        browse_btn.clicked.connect(self.browse_image)
+        
+        # 输入文本
+        self.input_text = QLineEdit()
+        self.input_text.setPlaceholderText("输入要键入的文本 (仅在选择'输入文本'时有效)")
+        
+        # 参数设置
+        self.confidence_input = QDoubleSpinBox()
+        self.confidence_input.setRange(0.1, 1.0)
+        self.confidence_input.setSingleStep(0.1)
+        self.confidence_input.setValue(0.8)
+        
+        self.wait_time_input = QDoubleSpinBox()
+        self.wait_time_input.setRange(0.1, 10.0)
+        self.wait_time_input.setSingleStep(0.1)
+        self.wait_time_input.setValue(1.0)
+        
+        # 执行按钮
+        execute_btn = QPushButton("执行所有步骤")
+        execute_btn.clicked.connect(self.execute_all_steps)
+        
+        # 添加到右侧布局
+        right_layout.addWidget(QLabel("步骤类型:"))
+        right_layout.addWidget(self.step_type_combo)
+        right_layout.addSpacing(10)
+        right_layout.addWidget(QLabel("选择图片:"))
+        right_layout.addWidget(self.image_path_label)
+        right_layout.addWidget(browse_btn)
+        right_layout.addSpacing(10)
+        right_layout.addWidget(QLabel("输入文本:"))
+        right_layout.addWidget(self.input_text)
+        right_layout.addSpacing(10)
+        right_layout.addWidget(QLabel("置信度 (0.1-1.0):"))
+        right_layout.addWidget(self.confidence_input)
+        right_layout.addSpacing(10)
+        right_layout.addWidget(QLabel("执行后等待时间(秒):"))
+        right_layout.addWidget(self.wait_time_input)
+        right_layout.addStretch()
+        right_layout.addWidget(execute_btn)
+        
+        # 添加到主布局
+        main_layout.addWidget(left_panel, 1)
+        main_layout.addWidget(right_panel, 1)
+        
+        # 状态栏
+        self.statusBar().showMessage("准备就绪")
+        
+        # 初始化按钮状态
+        self.update_buttons_state()
+    
+    def update_buttons_state(self):
+        """根据当前选择更新按钮状态"""
+        has_selection = len(self.steps_list.selectedItems()) > 0
+        self.edit_btn.setEnabled(has_selection)
+        self.delete_btn.setEnabled(has_selection)
+        self.move_up_btn.setEnabled(has_selection and self.steps_list.currentRow() > 0)
+        self.move_down_btn.setEnabled(has_selection and self.steps_list.currentRow() < self.steps_list.count() - 1)
+    
+    def browse_image(self):
+        """打开文件对话框选择图片"""
+        file_dialog = QFileDialog()
+        file_dialog.setNameFilter("图片文件 (*.png *.jpg *.jpeg)")
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self.image_path_label.setText(selected_files[0])
+                self.statusBar().showMessage(f"已选择图片: {os.path.basename(selected_files[0])}")
+    
+    def add_step(self):
+        """添加新步骤"""
+        step_type = self.step_type_combo.currentText()
+        image_path = self.image_path_label.text()
+        input_text = self.input_text.text()
+        confidence = self.confidence_input.value()
+        wait_time = self.wait_time_input.value()
+        
+        if not image_path or image_path == "未选择图片":
+            QMessageBox.warning(self, "警告", "请先选择图片")
+            return
+        
+        step = AutomationStep(step_type, image_path, input_text, confidence, wait_time)
+        self.steps.append(step)
+        self.update_steps_list()
+        
+        # 选中新添加的步骤
+        self.steps_list.setCurrentRow(len(self.steps) - 1)
+        self.statusBar().showMessage(f"已添加 {step_type} 步骤", 3000)
+    
+    def edit_step(self):
+        """编辑当前选中的步骤"""
+        selected_items = self.steps_list.selectedItems()
+        if not selected_items:
+            return
+        
+        row = self.steps_list.row(selected_items[0])
+        step = self.steps[row]
+        
+        # 更新步骤属性
+        step.step_type = self.step_type_combo.currentText()
+        step.image_path = self.image_path_label.text()
+        step.input_text = self.input_text.text()
+        step.confidence = self.confidence_input.value()
+        step.wait_time = self.wait_time_input.value()
+        
+        self.update_steps_list()
+        self.statusBar().showMessage(f"已更新步骤 {row + 1}", 3000)
+    
+    def delete_step(self):
+        """删除当前选中的步骤"""
+        selected_items = self.steps_list.selectedItems()
+        if not selected_items:
+            return
+        
+        row = self.steps_list.row(selected_items[0])
+        del self.steps[row]
+        self.update_steps_list()
+        self.statusBar().showMessage(f"已删除步骤 {row + 1}", 3000)
+    
+    def move_step_up(self):
+        """上移步骤"""
+        current_row = self.steps_list.currentRow()
+        if current_row > 0:
+            self.steps[current_row], self.steps[current_row - 1] = self.steps[current_row - 1], self.steps[current_row]
+            self.update_steps_list()
+            self.steps_list.setCurrentRow(current_row - 1)
+    
+    def move_step_down(self):
+        """下移步骤"""
+        current_row = self.steps_list.currentRow()
+        if current_row < len(self.steps) - 1:
+            self.steps[current_row], self.steps[current_row + 1] = self.steps[current_row + 1], self.steps[current_row]
+            self.update_steps_list()
+            self.steps_list.setCurrentRow(current_row + 1)
+    
+    def on_step_selected(self):
+        """当步骤被选中时，加载其数据到编辑区"""
+        selected_items = self.steps_list.selectedItems()
+        if not selected_items:
+            return
+        
+        row = self.steps_list.row(selected_items[0])
+        step = self.steps[row]
+        
+        # 更新编辑区
+        index = self.step_type_combo.findText(step.step_type)
+        if index >= 0:
+            self.step_type_combo.setCurrentIndex(index)
+        
+        self.image_path_label.setText(step.image_path)
+        self.input_text.setText(step.input_text)
+        self.confidence_input.setValue(step.confidence)
+        self.wait_time_input.setValue(step.wait_time)
+        
+        self.update_buttons_state()
+    
+    def update_steps_list(self):
+        """更新步骤列表显示"""
+        self.steps_list.clear()
+        for i, step in enumerate(self.steps, 1):
+            item = QListWidgetItem(f"{i}. {step.step_type} - {os.path.basename(step.image_path)}")
+            item.setData(Qt.ItemDataRole.UserRole, i - 1)  # 存储索引
+            self.steps_list.addItem(item)
+        
+        self.update_buttons_state()
+    
+    def execute_all_steps(self):
+        """执行所有步骤"""
+        if not self.steps:
+            QMessageBox.warning(self, "警告", "没有可执行的步骤")
+            return
+        
+        self.statusBar().showMessage("开始执行所有步骤...")
+        QApplication.processEvents()  # 更新UI
+        
+        success_count = 0
+        for i, step in enumerate(self.steps, 1):
+            self.statusBar().showMessage(f"正在执行步骤 {i}/{len(self.steps)}...")
+            QApplication.processEvents()
+            
+            success, message = step.execute()
+            if success:
+                success_count += 1
+            else:
+                QMessageBox.warning(self, "步骤执行失败", f"步骤 {i} 执行失败: {message}")
+                break
+        
+        self.statusBar().showMessage(f"执行完成，成功 {success_count}/{len(self.steps)} 个步骤", 5000)
+        if success_count == len(self.steps):
+            QMessageBox.information(self, "完成", "所有步骤执行成功!")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    
+    # 设置现代风格
+    app.setStyle("Fusion")
+    
+    window = ImageClickerApp()
+    window.show()
+    sys.exit(app.exec())
